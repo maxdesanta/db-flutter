@@ -1,7 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:sqflite/sqflite.dart';
-import 'package:tugas_database/helper/dbhelper.dart';
-import 'package:tugas_database/model/contact.dart';
 import 'package:tugas_database/ui/entryform.dart';
 
 class HomePage extends StatefulWidget {
@@ -10,38 +8,21 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  List<Contact> contacts = [];
-  DbHelper dbHelper = DbHelper();
 
-  @override
-  void initState() {
-    super.initState();
-    refreshList();
-  }
-
-  void refreshList() async {
-    List<Contact> x = await dbHelper.getContactList();
-    setState(() {
-      contacts = x;
-    });
-  }
-
-  void deleteContact(int id) async {
-    await dbHelper.delete(id);
-    refreshList();
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Data berhasil dihapus')));
-  }
-
-  void navigateToEntryForm(Contact? contact) async {
-    bool result = await Navigator.push(
+  void navigateToEntryForm(DocumentSnapshot? contact) async {
+    await Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => EntryForm(contact: contact),
-      ),
+      MaterialPageRoute(builder: (context) => EntryForm(contact: contact,)),
     );
-    if (result == true) {
-      refreshList();
-    }
+  }
+
+  // fungsi hapus data
+  void delete(String id) async {
+    await FirebaseFirestore.instance.collection("contacts").doc(id).delete();
+
+    ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Data berhasil dihapus')));
   }
 
   @override
@@ -51,36 +32,50 @@ class _HomePageState extends State<HomePage> {
         title: Text('Daftar Contact'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
       ),
-      body: ListView.builder(
-        itemCount: contacts.length,
-        itemBuilder: (context, index) {
-          Contact c = contacts[index];
-          return Card(
-            color: Colors.white,
-            elevation: 2.0,
-            child: ListTile(
-              leading: CircleAvatar(
-                backgroundColor: Colors.red,
-                child: Icon(Icons.people),
-              ),
-              title: Text(c.namaKontak),
-              subtitle: Text(c.nomorTelepon),
-              trailing: GestureDetector(
-                child: Icon(Icons.delete),
-                onTap: () async {
-                  deleteContact(c.id!);
-                },
-              ),
-              onTap: () async {
-                navigateToEntryForm(c);
-              },
-            )
+      body: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance.collection("contacts").snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return Text('Error: ${snapshot.error}');
+          }
+
+          final data = snapshot.data!.docs;
+          if (data.isEmpty) {
+            return Center(child: Text("Belum ada data"));
+          }
+
+          return ListView.builder(
+            itemCount: data.length,
+            itemBuilder: (context, index) {
+              final contact = data[index].data() as Map<String, dynamic>;
+              return Card(
+                color: Colors.white,
+                elevation: 2.0,
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: Colors.red,
+                    child: Icon(Icons.people),
+                  ),
+                  title: Text(contact["name"]),
+                  subtitle: Text(contact["phone"]),
+                  trailing: GestureDetector(
+                    child: Icon(Icons.delete),
+                    onTap: () async {
+                      delete(data[index].id);
+                    },
+                  ),
+                  onTap: () async {
+                    navigateToEntryForm(data[index]);
+                  },
+                ),
+              );
+            },
           );
         },
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          navigateToEntryForm(null); // null berarti tambah data baru
+          navigateToEntryForm(null); 
         },
         child: Icon(Icons.add),
       ),

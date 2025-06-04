@@ -1,9 +1,9 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:tugas_database/helper/dbhelper.dart';
 import 'package:tugas_database/model/contact.dart';
 
 class EntryForm extends StatefulWidget {
-  final Contact? contact; // Bisa null jika tambah data baru
+  final DocumentSnapshot? contact; // Gunakan DocumentSnapshot untuk update
 
   EntryForm({this.contact});
 
@@ -14,50 +14,71 @@ class EntryForm extends StatefulWidget {
 class _EntryFormState extends State<EntryForm> {
   TextEditingController namaKontakController = TextEditingController();
   TextEditingController nomorTeleponController = TextEditingController();
-  int? contactId; // Menyimpan id untuk update
 
   @override
   void initState() {
     super.initState();
     if (widget.contact != null) {
-      contactId = widget.contact!.id; // Simpan id
-      namaKontakController.text = widget.contact!.namaKontak;
-      nomorTeleponController.text = widget.contact!.nomorTelepon;
+      final data = widget.contact!.data() as Map<String, dynamic>;
+      namaKontakController.text = data['name'] ?? '';
+      nomorTeleponController.text = data['phone'] ?? '';
     }
   }
 
-  void save() async {
-    String name = namaKontakController.text;
-    String phone = nomorTeleponController.text;
+  Future<void> save() async {
+    String name = namaKontakController.text.trim();
+    String phone = nomorTeleponController.text.trim();
 
-    Contact contact = Contact(
-      id: contactId, // Penting! id harus diisi untuk update
-      namaKontak: name,
-      nomorTelepon: phone,
-    );
-
-    if (contactId == null) {
-      // Insert data baru
-      await DbHelper().insert(contact);
-    } else {
-      // Update data lama
-      await DbHelper().update(contact);
+    if (name.isEmpty || phone.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Data tidak boleh kosong')),
+      );
+      return;
     }
 
-    Navigator.pop(context, true); // Kembali ke halaman Home dengan hasil true
+    try {
+      if (widget.contact == null) {
+        // Tambah data baru
+        await FirebaseFirestore.instance.collection('contacts').add({
+          'name': name,
+          'phone': phone,
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Data berhasil disimpan')),
+        );
+      } else {
+        // Update data existing
+        await FirebaseFirestore.instance
+            .collection('contacts')
+            .doc(widget.contact!.id)
+            .update({
+          'name': name,
+          'phone': phone,
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Data berhasil diperbarui')),
+        );
+      }
+      Navigator.pop(context, true);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal menyimpan data: $e')),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    bool isEdit = widget.contact != null;
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        title: contactId == null ? Text("Tambah Data") : Text("Ubah Data"),
+        title: Text(isEdit ? "Ubah Data" : "Tambah Data"),
         leading: IconButton(
           onPressed: () {
             Navigator.pop(context);
-          }, 
-          icon: Icon(Icons.arrow_back)
+          },
+          icon: Icon(Icons.arrow_back),
         ),
       ),
       body: Padding(
@@ -81,7 +102,7 @@ class _EntryFormState extends State<EntryForm> {
               padding: EdgeInsets.only(top: 15, bottom: 15),
               child: TextField(
                 controller: nomorTeleponController,
-                keyboardType: TextInputType.text,
+                keyboardType: TextInputType.phone,
                 decoration: InputDecoration(
                   labelText: "Nomor Telepon",
                   border: OutlineInputBorder(
@@ -97,14 +118,13 @@ class _EntryFormState extends State<EntryForm> {
                   // tombol simpan
                   Expanded(
                     child: ElevatedButton(
-                      onPressed: () {
-                        save();
-                      }, 
+                      onPressed: save,
                       child: Text("Simpan"),
                       style: ButtonStyle(
-                        backgroundColor: MaterialStatePropertyAll<Color>(Colors.green),
+                        backgroundColor:
+                            MaterialStatePropertyAll<Color>(Colors.green),
                       ),
-                    )
+                    ),
                   ),
                   Container(width: 5),
                   // tombol batal
@@ -112,19 +132,20 @@ class _EntryFormState extends State<EntryForm> {
                     child: ElevatedButton(
                       onPressed: () {
                         Navigator.pop(context);
-                      }, 
+                      },
                       child: Text("Batal"),
                       style: ButtonStyle(
-                        backgroundColor: MaterialStatePropertyAll<Color>(Colors.red),
+                        backgroundColor:
+                            MaterialStatePropertyAll<Color>(Colors.red),
                       ),
-                    )
+                    ),
                   ),
                 ],
               ),
-            )
+            ),
           ],
         ),
-      )
+      ),
     );
   }
 }
